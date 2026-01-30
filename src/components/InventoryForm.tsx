@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { registrarIngresoMercaderia } from '@/services/batchService'
 import { database } from '@/model/database'
 
-// 1. PEGA AQUÍ EL JSON GIGANTE DE ARRIBA (CATALOGO_INICIAL)
+// 1. JSON BASE (Tu catálogo inicial)
 const CATALOGO_INICIAL = [
   { sku: 'MANZ-ROY', nombre: 'Manzana Royal' },
   { sku: 'MANZ-FUG', nombre: 'Manzana Fuji' },
@@ -31,18 +31,12 @@ export default function InventoryForm({ onComplete }: { onComplete: () => void }
   const [mostrarLista, setMostrarLista] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  // 2. EFECTO: Carga Inteligente (Fix aplicado aquí)
+  // Carga Inteligente
   useEffect(() => {
     const cargarCatalogo = async () => {
       const productosDB = await database.get('products').query().fetch()
+      const listaDB = productosDB.map((p: any) => ({ sku: p.sku, nombre: p.nombre }))
       
-      // FIX: Usamos (p: any) para que TypeScript no reclame por .sku y .nombre
-      const listaDB = productosDB.map((p: any) => ({ 
-        sku: p.sku, 
-        nombre: p.nombre 
-      }))
-      
-      // Mezclamos DB + JSON Inicial (Sin duplicados)
       const mapaUnico = new Map()
       CATALOGO_INICIAL.forEach(item => mapaUnico.set(item.sku, item))
       listaDB.forEach(item => mapaUnico.set(item.sku, item))
@@ -96,18 +90,23 @@ export default function InventoryForm({ onComplete }: { onComplete: () => void }
     }
   }
 
+  // Clases comunes para inputs (Texto oscuro + Placeholder visible)
+  // AGREGADO: text-gray-900 (Negro intenso) y placeholder:text-gray-400
+  const inputClass = "w-full p-3 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white focus:border-green-500 transition font-medium text-gray-900 placeholder:text-gray-400"
+
   return (
     <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 space-y-4 relative animate-in fade-in slide-in-from-bottom-4 duration-500">
       <h2 className="text-xl font-bold text-gray-800 border-b pb-2">Nuevo Ingreso Inteligente</h2>
       
       <div className="grid grid-cols-2 gap-4">
+        {/* SKU (Mantiene su estilo azul especial) */}
         <div className="relative">
           <label className="text-xs font-bold text-gray-500 uppercase">SKU</label>
           <input 
             type="text" 
             placeholder="EJ: MANZ-ROY" 
             value={form.sku}
-            className="w-full p-3 border-2 border-blue-100 rounded-xl bg-blue-50 focus:bg-white focus:border-blue-500 transition font-mono font-bold text-blue-800"
+            className="w-full p-3 border-2 border-blue-100 rounded-xl bg-blue-50 focus:bg-white focus:border-blue-500 transition font-mono font-bold text-blue-800 placeholder:text-blue-300"
             onChange={handleSkuChange}
             onFocus={() => form.sku && setMostrarLista(true)}
             onBlur={() => setTimeout(() => setMostrarLista(false), 200)}
@@ -131,13 +130,14 @@ export default function InventoryForm({ onComplete }: { onComplete: () => void }
           )}
         </div>
 
+        {/* NOMBRE */}
         <div>
           <label className="text-xs font-bold text-gray-500 uppercase">Nombre</label>
           <input 
             type="text" 
             placeholder="Se llena solo..." 
             value={form.nombre}
-            className="w-full p-3 border rounded-xl bg-gray-50 focus:bg-white transition font-semibold"
+            className={inputClass} // Usamos la clase corregida
             onChange={e => setForm({...form, nombre: capitalizar(e.target.value)})} 
             required 
           />
@@ -147,26 +147,38 @@ export default function InventoryForm({ onComplete }: { onComplete: () => void }
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-xs font-bold text-gray-500 uppercase">Precio Venta</label>
-          <input type="number" className="w-full p-3 border rounded-xl bg-gray-50"
-            onChange={e => setForm({...form, precioVenta: Number(e.target.value)})} required />
+          <input 
+            type="number" 
+            className={inputClass} // Usamos la clase corregida
+            onChange={e => setForm({...form, precioVenta: Number(e.target.value)})} required 
+          />
         </div>
         <div>
           <label className="text-xs font-bold text-gray-500 uppercase">Costo Compra</label>
-          <input type="number" className="w-full p-3 border rounded-xl bg-gray-50"
-            onChange={e => setForm({...form, costoCompra: Number(e.target.value)})} required />
+          <input 
+            type="number" 
+            className={inputClass} // Usamos la clase corregida
+            onChange={e => setForm({...form, costoCompra: Number(e.target.value)})} required 
+          />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-xs font-bold text-gray-500 uppercase">Cantidad (Kg)</label>
-          <input type="number" step="0.001" className="w-full p-3 border rounded-xl bg-gray-50"
-            onChange={e => setForm({...form, cantidad: Number(e.target.value)})} required />
+          <input 
+            type="number" step="0.001" 
+            className={inputClass} // Usamos la clase corregida
+            onChange={e => setForm({...form, cantidad: Number(e.target.value)})} required 
+          />
         </div>
         <div>
           <label className="text-xs font-bold text-gray-500 uppercase">Vencimiento</label>
-          <input type="date" className="w-full p-3 border rounded-xl bg-gray-50"
-            onChange={e => setForm({...form, vencimiento: e.target.value})} required />
+          <input 
+            type="date" 
+            className={inputClass} // Usamos la clase corregida
+            onChange={e => setForm({...form, vencimiento: e.target.value})} required 
+          />
         </div>
       </div>
 
