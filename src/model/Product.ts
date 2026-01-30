@@ -3,9 +3,10 @@ import { field, text, children } from '@nozbe/watermelondb/decorators'
 
 export default class Product extends Model {
   static table = 'products'
+  
   static associations = {
     batches: { type: 'has_many', foreignKey: 'product_id' },
-  }
+  } as const
 
   @text('sku') sku!: string
   @text('nombre') nombre!: string
