@@ -52,6 +52,19 @@ export default schemaMigrations({
           ]
         }),
       ]
+    },
+    {
+      toVersion: 4,
+      steps: [
+        // Agregar min_stock y category a productos
+        addColumns({
+          table: 'products',
+          columns: [
+            { name: 'min_stock', type: 'number', isOptional: true },
+            { name: 'category', type: 'string', isOptional: true },
+          ]
+        }),
+      ]
     }
   ]
 })

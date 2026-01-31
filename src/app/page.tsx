@@ -5,6 +5,9 @@ import withObservables from '@nozbe/with-observables'
 import { toast } from 'sonner'
 import { registrarIngresoMercaderia } from '@/services/batchService'
 import { procesarVentaFIFO } from '@/services/salesService'
+import { checkCriticalStock } from '@/services/stockAlertService'
+import { exportSalesReportPDF, exportLossesReportPDF } from '@/services/reportService'
+import { CATEGORY_CONFIG, ProductCategory } from '@/model/Product'
 import InventoryForm from '@/components/InventoryForm'
 import LossModal from '@/components/LossModal'
 import SalesHistory from '@/components/SalesHistory'
@@ -12,9 +15,10 @@ import KPIDashboard from '@/components/KPIDashboard'
 import SearchBar from '@/components/SearchBar'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import EmptyState from '@/components/EmptyState'
+import SettingsForm from '@/components/SettingsForm'
 
 // --- TAB TYPES ---
-type TabType = 'inventory' | 'history' | 'losses'
+type TabType = 'inventory' | 'history' | 'losses' | 'settings'
 
 // --- PRODUCT ITEM COMPONENT ---
 const RawProductItem = ({ 
@@ -32,6 +36,12 @@ const RawProductItem = ({
   const menuRef = useRef<HTMLDivElement>(null)
 
   const stockTotal = batches.reduce((sum, b) => sum + (b.stockActual || 0), 0)
+  const minStock = product.minStock ?? 5
+  const isLowStock = stockTotal < minStock && stockTotal > 0
+  
+  // Category styling
+  const category = (product.category as ProductCategory) || 'Otros'
+  const categoryStyle = CATEGORY_CONFIG[category] || CATEGORY_CONFIG['Otros']
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -64,23 +74,37 @@ const RawProductItem = ({
 
   return (
     <>
-      <div className="p-4 border-b bg-white hover:bg-gray-50 transition relative">
+      <div className={`p-4 border-b bg-white hover:bg-gray-50 transition relative ${isLowStock ? 'border-l-4 border-l-red-400' : ''}`}>
         <div className="flex justify-between items-center">
           <div 
             className="flex-1 cursor-pointer flex justify-between items-center pr-4"
             onClick={() => setShowBatches(!showBatches)}
           >
-            <div>
-              <p className="font-bold text-lg text-gray-800">{product.nombre}</p>
-              <p className="text-xs text-gray-400 font-mono">SKU: {product.sku}</p>
+            <div className="flex items-center gap-3">
+              {/* Category badge */}
+              <div className={`w-10 h-10 rounded-xl ${categoryStyle.bg} flex items-center justify-center text-lg`}>
+                {categoryStyle.emoji}
+              </div>
+              <div>
+                <p className="font-bold text-lg text-gray-800">{product.nombre}</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 font-mono">SKU: {product.sku}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${categoryStyle.bg} ${categoryStyle.color}`}>
+                    {category}
+                  </span>
+                </div>
+              </div>
             </div>
             <div className="text-right mr-2">
-              <p className={`text-2xl font-black ${stockTotal < 5 ? 'text-red-500' : 'text-green-600'}`}>
+              <p className={`text-2xl font-black ${isLowStock ? 'text-red-500' : 'text-green-600'}`}>
                 {stockTotal.toFixed(2)} <span className="text-sm font-normal text-gray-400">kg</span>
               </p>
               <p className="text-[10px] text-gray-400 uppercase tracking-widest">
                 {showBatches ? 'Ocultar ▲' : 'Ver Lotes ▼'}
               </p>
+              {isLowStock && (
+                <p className="text-[9px] text-red-400">Min: {minStock}kg</p>
+              )}
             </div>
           </div>
 
@@ -171,7 +195,6 @@ const RawProductList = ({
   onOpenLossModal: (batch: any, productName: string) => void,
   searchQuery: string
 }) => {
-  // Filter products by search query
   const filteredProducts = products.filter(p => {
     if (!searchQuery) return true
     const query = searchQuery.toLowerCase()
@@ -188,7 +211,7 @@ const RawProductList = ({
         <EmptyState 
           icon={searchQuery ? '🔍' : '📦'}
           title={searchQuery ? 'Sin resultados' : 'Sin productos'}
-          description={searchQuery ? `No se encontró "${searchQuery}"` : 'Ingresa tu primer producto para comenzar'}
+          description={searchQuery ? `No se encontró "${searchQuery}"` : 'Ingresa tu primer producto'}
         />
       ) : (
         filteredProducts.map(p => <ProductItem key={p.id} product={p} onOpenLossModal={onOpenLossModal} />)
@@ -204,6 +227,52 @@ const EnhancedProductList = withObservables([], () => ({
 const ProductList = ({ onOpenLossModal, searchQuery }: { onOpenLossModal: (batch: any, productName: string) => void, searchQuery: string }) => (
   <EnhancedProductList onOpenLossModal={onOpenLossModal} searchQuery={searchQuery} />
 )
+
+// --- EXPORT BUTTON ---
+const ExportButton = ({ type }: { type: 'sales' | 'losses' }) => {
+  const [loading, setLoading] = useState(false)
+
+  const handleExport = async () => {
+    setLoading(true)
+    try {
+      // Get this month's date range
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth(), 1)
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
+      
+      if (type === 'sales') {
+        const result = await exportSalesReportPDF({ start, end })
+        toast.success('Reporte exportado', {
+          description: `${result.totalSales} ventas • ${result.filename}`
+        })
+      } else {
+        const result = await exportLossesReportPDF({ start, end })
+        toast.success('Reporte exportado', {
+          description: `${result.totalLosses} registros • ${result.totalKg.toFixed(1)}kg`
+        })
+      }
+    } catch (error) {
+      toast.error('Error al exportar')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleExport}
+      disabled={loading}
+      className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition disabled:opacity-50"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      {loading ? 'Exportando...' : 'Exportar PDF'}
+    </button>
+  )
+}
 
 
 // --- MAIN PAGE ---
@@ -222,6 +291,11 @@ export default function Home() {
     batch: null,
     productName: ''
   })
+
+  // Check critical stock on mount
+  useEffect(() => {
+    checkCriticalStock()
+  }, [])
 
   // Persist activeTab in localStorage
   useEffect(() => {
@@ -279,6 +353,7 @@ export default function Home() {
     { id: 'inventory', label: 'Inventario', icon: '📦' },
     { id: 'history', label: 'Ventas', icon: '🛒' },
     { id: 'losses', label: 'Mermas', icon: '📉' },
+    { id: 'settings', label: 'Ajustes', icon: '⚙️' },
   ]
 
   return (
@@ -290,7 +365,7 @@ export default function Home() {
             <h1 className="text-3xl font-black text-green-600 tracking-tighter">FreshControl</h1>
             <p className="text-gray-500 text-sm">POS Offline-First</p>
           </div>
-          {view === 'main' && (
+          {view === 'main' && activeTab === 'inventory' && (
             <button 
               onClick={() => setView('add')}
               className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2 rounded-full shadow-md transition flex items-center gap-2"
@@ -321,14 +396,14 @@ export default function Home() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex-1 py-2.5 px-3 rounded-xl font-medium text-sm transition flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 py-2.5 px-2 rounded-xl font-medium text-sm transition flex items-center justify-center gap-1 ${
                     activeTab === tab.id 
                       ? 'bg-green-600 text-white shadow-md' 
                       : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                   }`}
                 >
                   <span>{tab.icon}</span>
-                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className="hidden sm:inline text-xs">{tab.label}</span>
                 </button>
               ))}
             </div>
@@ -336,10 +411,7 @@ export default function Home() {
             {/* Tab Content */}
             {activeTab === 'inventory' && (
               <div className="animate-in fade-in duration-200">
-                {/* KPI Dashboard */}
                 <KPIDashboard />
-
-                {/* Search */}
                 <SearchBar value={searchQuery} onChange={setSearchQuery} />
 
                 {/* Quick Actions */}
@@ -351,7 +423,6 @@ export default function Home() {
                   >
                     <span>🍎</span> +15.5kg Manzanas
                   </button>
-
                   <button 
                     onClick={handleVentaPrueba}
                     disabled={loading}
@@ -361,25 +432,38 @@ export default function Home() {
                   </button>
                 </div>
 
-                {/* Product List */}
                 <ProductList onOpenLossModal={openLossModal} searchQuery={searchQuery} />
               </div>
             )}
 
             {activeTab === 'history' && (
-              <div className="animate-in fade-in duration-200">
+              <div className="animate-in fade-in duration-200 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-lg font-bold text-gray-800">Historial de Ventas</h2>
+                  <ExportButton type="sales" />
+                </div>
                 <SalesHistory onBack={() => setActiveTab('inventory')} />
               </div>
             )}
 
             {activeTab === 'losses' && (
-              <div className="animate-in fade-in duration-200">
+              <div className="animate-in fade-in duration-200 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-lg font-bold text-gray-800">Reporte de Mermas</h2>
+                  <ExportButton type="losses" />
+                </div>
                 <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
                   <div className="bg-gradient-to-r from-red-500 to-orange-500 p-4 text-white font-bold">
-                    📉 Reporte de Mermas
+                    📉 Mermas del Mes
                   </div>
                   <SalesHistory onBack={() => setActiveTab('inventory')} />
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'settings' && (
+              <div className="animate-in fade-in duration-200">
+                <SettingsForm />
               </div>
             )}
           </>

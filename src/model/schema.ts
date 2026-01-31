@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb'
 
 export default appSchema({
-  version: 3,
+  version: 4,
   tables: [
     // Tabla de Productos para búsqueda O(1)
     tableSchema({
@@ -11,6 +11,8 @@ export default appSchema({
         { name: 'nombre', type: 'string' },
         { name: 'unidad_medida', type: 'string' },
         { name: 'precio_venta', type: 'number' },
+        { name: 'min_stock', type: 'number', isOptional: true },
+        { name: 'category', type: 'string', isOptional: true },
         { name: 'updated_at', type: 'number' },
       ]
     }),
