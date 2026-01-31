@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { database } from '@/model/database'
 import withObservables from '@nozbe/with-observables'
 import { toast } from 'sonner'
@@ -7,6 +7,7 @@ import { registrarIngresoMercaderia } from '@/services/batchService'
 import { procesarVentaFIFO } from '@/services/salesService'
 import { checkCriticalStock } from '@/services/stockAlertService'
 import { exportSalesReportPDF, exportLossesReportPDF } from '@/services/reportService'
+import { downloadBackup } from '@/services/backupService'
 import { CATEGORY_CONFIG, ProductCategory } from '@/model/Product'
 import InventoryForm from '@/components/InventoryForm'
 import LossModal from '@/components/LossModal'
@@ -20,8 +21,8 @@ import SettingsForm from '@/components/SettingsForm'
 // --- TAB TYPES ---
 type TabType = 'inventory' | 'history' | 'losses' | 'settings'
 
-// --- PRODUCT ITEM COMPONENT ---
-const RawProductItem = ({ 
+// --- PRODUCT ITEM (Memoized for performance) ---
+const RawProductItem = memo(({ 
   product, 
   batches,
   onOpenLossModal 
@@ -39,7 +40,6 @@ const RawProductItem = ({
   const minStock = product.minStock ?? 5
   const isLowStock = stockTotal < minStock && stockTotal > 0
   
-  // Category styling
   const category = (product.category as ProductCategory) || 'Otros'
   const categoryStyle = CATEGORY_CONFIG[category] || CATEGORY_CONFIG['Otros']
 
@@ -60,28 +60,21 @@ const RawProductItem = ({
       await database.write(async () => {
         await product.markAsDeleted() 
       })
-      toast.success(`"${product.nombre}" eliminado`, {
-        description: 'El producto y todos sus lotes han sido removidos'
-      })
+      toast.success(`"${product.nombre}" eliminado`)
     } catch (error) { 
-      toast.error('Error al eliminar producto')
+      toast.error('Error al eliminar')
     }
-  }
-
-  const handleDeleteBatch = (batch: any) => {
-    onOpenLossModal(batch, product.nombre)
   }
 
   return (
     <>
-      <div className={`p-4 border-b bg-white hover:bg-gray-50 transition relative ${isLowStock ? 'border-l-4 border-l-red-400' : ''}`}>
+      <div className={`p-4 border-b bg-white hover:bg-gray-50 transition ${isLowStock ? 'border-l-4 border-l-red-400' : ''}`}>
         <div className="flex justify-between items-center">
           <div 
             className="flex-1 cursor-pointer flex justify-between items-center pr-4"
             onClick={() => setShowBatches(!showBatches)}
           >
             <div className="flex items-center gap-3">
-              {/* Category badge */}
               <div className={`w-10 h-10 rounded-xl ${categoryStyle.bg} flex items-center justify-center text-lg`}>
                 {categoryStyle.emoji}
               </div>
@@ -99,40 +92,26 @@ const RawProductItem = ({
               <p className={`text-2xl font-black ${isLowStock ? 'text-red-500' : 'text-green-600'}`}>
                 {stockTotal.toFixed(2)} <span className="text-sm font-normal text-gray-400">kg</span>
               </p>
-              <p className="text-[10px] text-gray-400 uppercase tracking-widest">
-                {showBatches ? 'Ocultar ▲' : 'Ver Lotes ▼'}
-              </p>
-              {isLowStock && (
-                <p className="text-[9px] text-red-400">Min: {minStock}kg</p>
-              )}
+              <p className="text-[10px] text-gray-400 uppercase">{showBatches ? '▲' : '▼'}</p>
             </div>
           </div>
 
           <div className="relative border-l pl-3 ml-2 border-gray-100" ref={menuRef}>
             <button 
-              onClick={(e) => {
-                e.stopPropagation()
-                setShowMenu(!showMenu)
-              }}
-              className={`p-2 rounded-full transition-colors ${showMenu ? 'bg-gray-200 text-gray-800' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'}`}
+              onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu) }}
+              className={`p-2 rounded-full transition ${showMenu ? 'bg-gray-200' : 'text-gray-400 hover:bg-gray-100'}`}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" /></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
             </button>
 
             {showMenu && (
-              <div className="absolute right-0 top-10 w-48 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                <div className="py-1">
-                  <button 
-                    onClick={() => {
-                      setShowMenu(false)
-                      setConfirmDelete(true)
-                    }}
-                    className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 font-medium"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                    Borrar Producto Entero
-                  </button>
-                </div>
+              <div className="absolute right-0 top-10 w-48 bg-white rounded-xl shadow-2xl border z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                <button 
+                  onClick={() => { setShowMenu(false); setConfirmDelete(true) }}
+                  className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 font-medium"
+                >
+                  🗑️ Borrar Producto
+                </button>
               </div>
             )}
           </div>
@@ -140,26 +119,19 @@ const RawProductItem = ({
 
         {showBatches && (
           <div className="mt-3 space-y-1 border-t pt-2 animate-in fade-in duration-200">
-            <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">📦 Lotes Activos (FIFO):</p>
-            
+            <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">📦 Lotes (FIFO):</p>
             {batches.filter(b => b.stockActual > 0).length === 0 ? (
-              <p className="text-xs text-red-400 italic">Sin stock disponible.</p>
+              <p className="text-xs text-red-400 italic">Sin stock</p>
             ) : (
               batches.filter(b => b.stockActual > 0).map(b => (
-                <div key={b.id} className="text-[11px] flex justify-between items-center bg-blue-50 p-2 rounded-lg border-l-2 border-blue-400 mb-1">
-                  <div className="flex flex-col">
-                    <span className="text-gray-700 font-medium">📅 Vence: {b.fechaVencimiento}</span>
-                    <span className="text-[9px] text-gray-400">ID: {b.id.substring(0,6)}...</span>
-                  </div>
+                <div key={b.id} className="text-[11px] flex justify-between items-center bg-blue-50 p-2 rounded-lg border-l-2 border-blue-400">
+                  <span className="text-gray-700">📅 {b.fechaVencimiento}</span>
                   <div className="flex items-center gap-3">
-                    <span className="font-bold text-blue-700 text-sm">{b.stockActual.toFixed(2)} kg</span>
+                    <span className="font-bold text-blue-700">{b.stockActual.toFixed(2)} kg</span>
                     <button 
-                      onClick={() => handleDeleteBatch(b)}
-                      className="text-red-300 hover:text-red-600 p-1 hover:bg-red-100 rounded transition-colors"
-                      title="Registrar Merma"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                    </button>
+                      onClick={() => onOpenLossModal(b, product.nombre)}
+                      className="text-red-300 hover:text-red-600 p-1 hover:bg-red-100 rounded transition"
+                    >✕</button>
                   </div>
                 </div>
               ))
@@ -171,14 +143,16 @@ const RawProductItem = ({
       <ConfirmDialog
         isOpen={confirmDelete}
         title="¿Eliminar producto?"
-        message={`"${product.nombre}" y todos sus lotes serán eliminados permanentemente.`}
+        message={`"${product.nombre}" será eliminado permanentemente.`}
         confirmText="Eliminar"
         onConfirm={handleDeleteProduct}
         onCancel={() => setConfirmDelete(false)}
       />
     </>
   )
-}
+})
+
+RawProductItem.displayName = 'RawProductItem'
 
 const ProductItem = withObservables(['product'], ({ product }: { product: any }) => ({
   product,
@@ -186,20 +160,60 @@ const ProductItem = withObservables(['product'], ({ product }: { product: any })
 }))(RawProductItem)
 
 // --- PRODUCT LIST ---
-const RawProductList = ({ 
+const RawProductList = memo(({ 
   products, 
   onOpenLossModal,
-  searchQuery
+  searchQuery,
+  onAddFirst,
+  onImport
 }: { 
   products: any[], 
   onOpenLossModal: (batch: any, productName: string) => void,
-  searchQuery: string
+  searchQuery: string,
+  onAddFirst: () => void,
+  onImport: () => void
 }) => {
-  const filteredProducts = products.filter(p => {
-    if (!searchQuery) return true
+  // Memoized filtering for performance
+  const filteredProducts = useMemo(() => {
+    if (!searchQuery) return products
     const query = searchQuery.toLowerCase()
-    return p.nombre.toLowerCase().includes(query) || p.sku.toLowerCase().includes(query)
-  })
+    return products.filter(p => 
+      p.nombre.toLowerCase().includes(query) || p.sku.toLowerCase().includes(query)
+    )
+  }, [products, searchQuery])
+
+  // Onboarding: Empty database
+  if (products.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+        <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-6 text-white text-center">
+          <h2 className="text-2xl font-black mb-2">🌱 ¡Bienvenido a FreshControl!</h2>
+          <p className="text-green-100">Tu sistema de inventario offline-first</p>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-gray-600 text-center">
+            Comienza agregando tu primer producto o importa un backup existente.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={onAddFirst}
+              className="py-4 rounded-xl font-bold text-white bg-green-600 hover:bg-green-700 transition flex flex-col items-center gap-1"
+            >
+              <span className="text-2xl">➕</span>
+              <span>Crear Producto</span>
+            </button>
+            <button
+              onClick={onImport}
+              className="py-4 rounded-xl font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition flex flex-col items-center gap-1"
+            >
+              <span className="text-2xl">📥</span>
+              <span>Importar Backup</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="border rounded-2xl overflow-hidden shadow-sm bg-white">
@@ -209,47 +223,40 @@ const RawProductList = ({
       </div>
       {filteredProducts.length === 0 ? (
         <EmptyState 
-          icon={searchQuery ? '🔍' : '📦'}
-          title={searchQuery ? 'Sin resultados' : 'Sin productos'}
-          description={searchQuery ? `No se encontró "${searchQuery}"` : 'Ingresa tu primer producto'}
+          icon="🔍"
+          title="Sin resultados"
+          description={`No se encontró "${searchQuery}"`}
         />
       ) : (
         filteredProducts.map(p => <ProductItem key={p.id} product={p} onOpenLossModal={onOpenLossModal} />)
       )}
     </div>
   )
-}
+})
+
+RawProductList.displayName = 'RawProductList'
 
 const EnhancedProductList = withObservables([], () => ({
   products: database.get('products').query().observe()
 }))(RawProductList)
 
-const ProductList = ({ onOpenLossModal, searchQuery }: { onOpenLossModal: (batch: any, productName: string) => void, searchQuery: string }) => (
-  <EnhancedProductList onOpenLossModal={onOpenLossModal} searchQuery={searchQuery} />
-)
-
 // --- EXPORT BUTTON ---
-const ExportButton = ({ type }: { type: 'sales' | 'losses' }) => {
+const ExportButton = memo(({ type }: { type: 'sales' | 'losses' }) => {
   const [loading, setLoading] = useState(false)
 
   const handleExport = async () => {
     setLoading(true)
     try {
-      // Get this month's date range
       const now = new Date()
       const start = new Date(now.getFullYear(), now.getMonth(), 1)
       const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
       
       if (type === 'sales') {
         const result = await exportSalesReportPDF({ start, end })
-        toast.success('Reporte exportado', {
-          description: `${result.totalSales} ventas • ${result.filename}`
-        })
+        toast.success('Reporte exportado', { description: `${result.totalSales} ventas` })
       } else {
         const result = await exportLossesReportPDF({ start, end })
-        toast.success('Reporte exportado', {
-          description: `${result.totalLosses} registros • ${result.totalKg.toFixed(1)}kg`
-        })
+        toast.success('Reporte exportado', { description: `${result.totalKg.toFixed(1)}kg` })
       }
     } catch (error) {
       toast.error('Error al exportar')
@@ -262,17 +269,14 @@ const ExportButton = ({ type }: { type: 'sales' | 'losses' }) => {
     <button
       onClick={handleExport}
       disabled={loading}
-      className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition disabled:opacity-50"
+      className="flex items-center gap-2 px-4 py-2 bg-white border rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition disabled:opacity-50"
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/>
-        <line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>
-      {loading ? 'Exportando...' : 'Exportar PDF'}
+      📄 {loading ? 'Exportando...' : 'Exportar PDF'}
     </button>
   )
-}
+})
+
+ExportButton.displayName = 'ExportButton'
 
 
 // --- MAIN PAGE ---
@@ -282,14 +286,8 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<TabType>('inventory')
   const [searchQuery, setSearchQuery] = useState('')
   
-  const [lossModal, setLossModal] = useState<{
-    isOpen: boolean,
-    batch: any,
-    productName: string
-  }>({
-    isOpen: false,
-    batch: null,
-    productName: ''
+  const [lossModal, setLossModal] = useState<{ isOpen: boolean, batch: any, productName: string }>({
+    isOpen: false, batch: null, productName: ''
   })
 
   // Check critical stock on mount
@@ -297,7 +295,7 @@ export default function Home() {
     checkCriticalStock()
   }, [])
 
-  // Persist activeTab in localStorage
+  // Persist activeTab
   useEffect(() => {
     const saved = localStorage.getItem('freshcontrol-tab')
     if (saved) setActiveTab(saved as TabType)
@@ -307,7 +305,20 @@ export default function Home() {
     localStorage.setItem('freshcontrol-tab', activeTab)
   }, [activeTab])
 
-  const handleIngresoLote = async () => {
+  // Global ESC key handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (lossModal.isOpen) {
+          setLossModal({ isOpen: false, batch: null, productName: '' })
+        }
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [lossModal.isOpen])
+
+  const handleIngresoLote = useCallback(async () => {
     setLoading(true)
     try {
       await registrarIngresoMercaderia({
@@ -318,37 +329,32 @@ export default function Home() {
         cantidad: 15.5,
         vencimiento: '2026-02-15'
       })
-      toast.success('¡Lote ingresado!', {
-        description: '15.5kg de Manzana Royal agregados al inventario'
-      })
+      toast.success('¡Lote ingresado!')
     } catch (e: any) { 
-      toast.error('Error al ingresar lote', { description: e.message })
+      toast.error('Error', { description: e.message })
     } 
     finally { setLoading(false) }
-  }
+  }, [])
 
-  const handleVentaPrueba = async () => {
+  const handleVentaPrueba = useCallback(async () => {
     setLoading(true)
     try {
       await procesarVentaFIFO('MANZ-001', 5)
-      toast.success('¡Venta exitosa!', {
-        description: '5kg vendidos usando lógica FIFO'
-      })
+      toast.success('¡Venta exitosa!')
     } catch (e: any) { 
-      toast.error('Error en venta', { description: e.message })
+      toast.error('Error', { description: e.message })
     } 
     finally { setLoading(false) }
-  }
+  }, [])
 
-  const openLossModal = (batch: any, productName: string) => {
+  const openLossModal = useCallback((batch: any, productName: string) => {
     setLossModal({ isOpen: true, batch, productName })
-  }
+  }, [])
 
-  const closeLossModal = () => {
+  const closeLossModal = useCallback(() => {
     setLossModal({ isOpen: false, batch: null, productName: '' })
-  }
+  }, [])
 
-  // Tab configuration
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'inventory', label: 'Inventario', icon: '📦' },
     { id: 'history', label: 'Ventas', icon: '🛒' },
@@ -363,14 +369,14 @@ export default function Home() {
         <header className="mb-6 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-black text-green-600 tracking-tighter">FreshControl</h1>
-            <p className="text-gray-500 text-sm">POS Offline-First</p>
+            <p className="text-gray-500 text-sm">v1.0 • Offline-First POS</p>
           </div>
           {view === 'main' && activeTab === 'inventory' && (
             <button 
               onClick={() => setView('add')}
-              className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2 rounded-full shadow-md transition flex items-center gap-2"
+              className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2 rounded-full shadow-md transition"
             >
-              <span>+</span> Nuevo Ingreso
+              + Nuevo
             </button>
           )}
           {view === 'add' && (
@@ -384,10 +390,7 @@ export default function Home() {
         </header>
 
         {view === 'add' ? (
-          <InventoryForm onComplete={() => {
-            setView('main')
-            toast.success('¡Producto guardado!')
-          }} />
+          <InventoryForm onComplete={() => { setView('main'); toast.success('¡Guardado!') }} />
         ) : (
           <>
             {/* Tabs */}
@@ -399,7 +402,7 @@ export default function Home() {
                   className={`flex-1 py-2.5 px-2 rounded-xl font-medium text-sm transition flex items-center justify-center gap-1 ${
                     activeTab === tab.id 
                       ? 'bg-green-600 text-white shadow-md' 
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                      : 'text-gray-500 hover:bg-gray-50'
                   }`}
                 >
                   <span>{tab.icon}</span>
@@ -414,32 +417,36 @@ export default function Home() {
                 <KPIDashboard />
                 <SearchBar value={searchQuery} onChange={setSearchQuery} />
 
-                {/* Quick Actions */}
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <button 
                     onClick={handleIngresoLote}
                     disabled={loading}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl shadow-sm transition active:scale-95 text-sm flex justify-center items-center gap-2 disabled:opacity-50"
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl shadow-sm transition text-sm disabled:opacity-50"
                   >
-                    <span>🍎</span> +15.5kg Manzanas
+                    🍎 +15.5kg
                   </button>
                   <button 
                     onClick={handleVentaPrueba}
                     disabled={loading}
-                    className="bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 rounded-xl shadow-sm transition active:scale-95 text-sm flex justify-center items-center gap-2 disabled:opacity-50"
+                    className="bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 rounded-xl shadow-sm transition text-sm disabled:opacity-50"
                   >
-                    <span>🛒</span> Vender 5kg
+                    🛒 Vender 5kg
                   </button>
                 </div>
 
-                <ProductList onOpenLossModal={openLossModal} searchQuery={searchQuery} />
+                <EnhancedProductList 
+                  onOpenLossModal={openLossModal} 
+                  searchQuery={searchQuery}
+                  onAddFirst={() => setView('add')}
+                  onImport={() => setActiveTab('settings')}
+                />
               </div>
             )}
 
             {activeTab === 'history' && (
               <div className="animate-in fade-in duration-200 space-y-4">
                 <div className="flex justify-between items-center">
-                  <h2 className="text-lg font-bold text-gray-800">Historial de Ventas</h2>
+                  <h2 className="text-lg font-bold text-gray-800">Ventas</h2>
                   <ExportButton type="sales" />
                 </div>
                 <SalesHistory onBack={() => setActiveTab('inventory')} />
@@ -449,12 +456,12 @@ export default function Home() {
             {activeTab === 'losses' && (
               <div className="animate-in fade-in duration-200 space-y-4">
                 <div className="flex justify-between items-center">
-                  <h2 className="text-lg font-bold text-gray-800">Reporte de Mermas</h2>
+                  <h2 className="text-lg font-bold text-gray-800">Mermas</h2>
                   <ExportButton type="losses" />
                 </div>
                 <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
                   <div className="bg-gradient-to-r from-red-500 to-orange-500 p-4 text-white font-bold">
-                    📉 Mermas del Mes
+                    📉 Pérdidas del Mes
                   </div>
                   <SalesHistory onBack={() => setActiveTab('inventory')} />
                 </div>
@@ -470,7 +477,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* Loss Modal */}
       <LossModal 
         isOpen={lossModal.isOpen}
         batch={lossModal.batch}

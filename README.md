@@ -1,41 +1,196 @@
-<<<<<<< HEAD
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🥬 FreshControl
 
-## Getting Started
+> **Sistema POS Offline-First para gestión de inventarios perecibles**
 
-First, run the development server:
+[![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)](https://www.typescriptlang.org/)
+[![WatermelonDB](https://img.shields.io/badge/WatermelonDB-v0.27-green)](https://watermelondb.dev/)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+---
+
+## 🎯 ¿Qué es FreshControl?
+
+FreshControl es un **sistema de punto de venta (POS)** diseñado específicamente para negocios de productos perecibles como verdulerías, fruterías y minimarkets. Funciona **100% offline** gracias a WatermelonDB, permitiendo operaciones sin conexión a internet.
+
+### Características Principales
+
+- 📦 **Gestión de Inventario** con control de lotes y vencimientos
+- 🔄 **Lógica FIFO automática** para ventas (First-In, First-Out)
+- 📉 **Registro de Mermas** con motivos y notas justificativas
+- 📊 **Dashboard de KPIs** en tiempo real
+- 📄 **Exportación PDF** de reportes de ventas y mermas
+- 💾 **Backup/Restore** completo de la base de datos
+- 🔔 **Alertas proactivas** de stock bajo
+- 🏷️ **Categorización** de productos (Frutas, Verduras, Otros)
+
+---
+
+## 🧠 Lógica FIFO Explicada
+
+FreshControl implementa **FIFO (First-In, First-Out)** automáticamente al procesar ventas:
+
+```
+Lote A (ingresó 1 enero): 10kg de Manzanas
+Lote B (ingresó 5 enero): 15kg de Manzanas
+
+→ Venta de 12kg:
+  ✓ Se descuentan 10kg del Lote A (se agota)
+  ✓ Se descuentan 2kg del Lote B (quedan 13kg)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### ¿Por qué FIFO?
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Los productos perecibles deben venderse en orden de llegada para:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- ✅ Minimizar mermas por vencimiento
+- ✅ Rotar inventario eficientemente
+- ✅ Cumplir buenas prácticas de manipulación de alimentos
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## 🏗️ Arquitectura Técnica
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+┌─────────────────────────────────────────────┐
+│                  Next.js 14                  │
+│              (App Router + RSC)              │
+├─────────────────────────────────────────────┤
+│              React Components                │
+│   (withObservables + React.memo optimized)   │
+├─────────────────────────────────────────────┤
+│               WatermelonDB                   │
+│     (LokiJS browser / SQLite native)         │
+├─────────────────────────────────────────────┤
+│              IndexedDB (Browser)             │
+└─────────────────────────────────────────────┘
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Stack
 
-## Deploy on Vercel
+| Tecnología   | Uso                                  |
+| ------------ | ------------------------------------ |
+| Next.js 14   | Framework React con App Router       |
+| TypeScript   | Tipado estricto en todo el proyecto  |
+| WatermelonDB | Base de datos offline-first reactiva |
+| TailwindCSS  | Estilos utility-first                |
+| Sonner       | Notificaciones toast                 |
+| jsPDF        | Generación de reportes PDF           |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-=======
-# nonoproyect
-ojalafuncione
->>>>>>> 9abdff12e726c73fb62ba1b8d7a8e5cfd1e3fe11
+## 📁 Estructura del Proyecto
+
+```
+src/
+├── app/
+│   ├── page.tsx          # Página principal
+│   ├── layout.tsx        # Layout con Toaster
+│   └── globals.css       # Estilos globales
+├── components/
+│   ├── ConfirmDialog.tsx # Diálogos de confirmación
+│   ├── EmptyState.tsx    # Estados vacíos
+│   ├── InventoryForm.tsx # Formulario de ingreso
+│   ├── KPIDashboard.tsx  # Dashboard de métricas
+│   ├── LossModal.tsx     # Modal de mermas
+│   ├── SalesHistory.tsx  # Historial de ventas
+│   ├── SearchBar.tsx     # Buscador reactivo
+│   └── SettingsForm.tsx  # Configuración
+├── model/
+│   ├── database.ts       # Configuración WatermelonDB
+│   ├── schema.ts         # Esquema v4
+│   ├── migrations.ts     # Migraciones de datos
+│   ├── Product.ts        # Modelo de productos
+│   ├── Batch.ts          # Modelo de lotes
+│   ├── Sale.ts           # Modelo de ventas
+│   ├── SaleItem.ts       # Items de venta
+│   └── Loss.ts           # Modelo de mermas
+└── services/
+    ├── batchService.ts   # Lógica de lotes
+    ├── salesService.ts   # Procesamiento FIFO
+    ├── lossService.ts    # Registro de mermas
+    ├── reportService.ts  # Exportación PDF
+    ├── settingsService.ts # Configuración
+    ├── backupService.ts  # Backup/Restore
+    └── stockAlertService.ts # Alertas
+```
+
+---
+
+## 🚀 Instalación
+
+### Requisitos
+
+- Node.js 18+
+- npm o yarn
+
+### Pasos
+
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/tu-usuario/freshcontrol.git
+cd freshcontrol
+
+# 2. Instalar dependencias
+npm install
+
+# 3. Iniciar en desarrollo
+npm run dev
+
+# 4. Abrir en el navegador
+open http://localhost:3000
+```
+
+### Build de Producción
+
+```bash
+npm run build
+npm start
+```
+
+---
+
+## 💾 Sistema de Backup
+
+FreshControl incluye un sistema completo de respaldo:
+
+- **Exportar**: Descarga un archivo JSON con todos los datos
+- **Importar**: Restaura datos desde un backup previo
+- **Reset**: Borra toda la base de datos (con doble confirmación)
+
+El backup incluye:
+
+- Productos y sus categorías
+- Lotes con fechas de vencimiento
+- Historial de ventas
+- Registro de mermas
+
+---
+
+## 📊 Métricas del Dashboard
+
+| KPI             | Fórmula                                  |
+| --------------- | ---------------------------------------- |
+| **Valor Total** | Σ(stock_actual × costo_compra)           |
+| **Mermas Hoy**  | Σ(quantity) donde date ≥ hoy 00:00       |
+| **Stock Bajo**  | Count(productos donde stock < min_stock) |
+
+---
+
+## 🔑 Atajos de Teclado
+
+| Atajo        | Acción           |
+| ------------ | ---------------- |
+| `⌘/Ctrl + K` | Enfocar buscador |
+| `Esc`        | Cerrar modales   |
+
+---
+
+## 📝 Licencia
+
+MIT © 2026
+
+---
+
+<p align="center">
+  Desarrollado con 🥬 por <strong>FreshControl Team</strong>
+</p>
