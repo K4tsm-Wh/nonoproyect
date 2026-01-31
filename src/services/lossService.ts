@@ -14,15 +14,17 @@ export type LossReason = typeof LOSS_REASONS[keyof typeof LOSS_REASONS]
  * @param batch - El lote afectado
  * @param reason - Motivo de la pérdida ("Vencido", "Dañado", "Otro")
  * @param quantity - Cantidad a dar de baja
+ * @param note - Nota opcional con justificación
  * @param productName - Nombre del producto (para logs)
  */
 export const registrarMerma = async (params: {
   batch: any,
   reason: LossReason,
   quantity: number,
+  note?: string,
   productName?: string
 }): Promise<void> => {
-  const { batch, reason, quantity } = params
+  const { batch, reason, quantity, note } = params
   
   // Validaciones
   if (quantity <= 0) {
@@ -40,6 +42,7 @@ export const registrarMerma = async (params: {
       loss.productId = batch.productId
       loss.reason = reason
       loss.quantity = quantity
+      loss.note = note || ''
       loss.date = Date.now()
       loss.updatedAt = Date.now()
     })

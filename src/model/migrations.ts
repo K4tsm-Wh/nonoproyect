@@ -1,4 +1,4 @@
-import { schemaMigrations, createTable } from '@nozbe/watermelondb/Schema/migrations'
+import { schemaMigrations, createTable, addColumns } from '@nozbe/watermelondb/Schema/migrations'
 
 export default schemaMigrations({
   migrations: [
@@ -37,6 +37,18 @@ export default schemaMigrations({
             { name: 'unit_price', type: 'number' },
             { name: 'subtotal', type: 'number' },
             { name: 'updated_at', type: 'number' },
+          ]
+        }),
+      ]
+    },
+    {
+      toVersion: 3,
+      steps: [
+        // Agregar campo note a losses para justificaciones
+        addColumns({
+          table: 'losses',
+          columns: [
+            { name: 'note', type: 'string', isOptional: true },
           ]
         }),
       ]

@@ -13,6 +13,7 @@ export default class Loss extends Model {
   @text('product_id') productId!: string
   @text('reason') reason!: string
   @field('quantity') quantity!: number
+  @text('note') note?: string
   @date('date') date!: Date
   @field('updated_at') updatedAt!: number
 }

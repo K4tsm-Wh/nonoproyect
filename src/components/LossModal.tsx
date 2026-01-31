@@ -1,6 +1,7 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { registrarMerma, LOSS_REASONS, LossReason } from '@/services/lossService'
+import { toast } from 'sonner'
 
 interface LossModalProps {
   isOpen: boolean
@@ -11,16 +12,24 @@ interface LossModalProps {
 }
 
 export default function LossModal({ isOpen, batch, productName, onClose, onSuccess }: LossModalProps) {
-  const [quantity, setQuantity] = useState<number>(batch?.stockActual || 0)
+  const [quantity, setQuantity] = useState<number>(0)
   const [reason, setReason] = useState<LossReason>(LOSS_REASONS.EXPIRED)
+  const [note, setNote] = useState<string>('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+
+  // Reset form when batch changes
+  useEffect(() => {
+    if (batch) {
+      setQuantity(batch.stockActual || 0)
+      setReason(LOSS_REASONS.EXPIRED)
+      setNote('')
+    }
+  }, [batch])
 
   if (!isOpen || !batch) return null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
     setLoading(true)
 
     try {
@@ -28,12 +37,18 @@ export default function LossModal({ isOpen, batch, productName, onClose, onSucce
         batch,
         reason,
         quantity,
+        note: note.trim() || undefined,
         productName
+      })
+      toast.success(`Merma registrada: ${quantity.toFixed(2)}kg de ${productName}`, {
+        description: `Motivo: ${reason}`
       })
       onSuccess()
       onClose()
     } catch (err: any) {
-      setError(err.message || 'Error al registrar la merma')
+      toast.error('Error al registrar merma', {
+        description: err.message || 'Intenta de nuevo'
+      })
     } finally {
       setLoading(false)
     }
@@ -143,12 +158,19 @@ export default function LossModal({ isOpen, batch, productName, onClose, onSucce
             </div>
           </div>
 
-          {/* Error message */}
-          {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm font-medium">
-              ⚠️ {error}
-            </div>
-          )}
+          {/* Nota opcional */}
+          <div>
+            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">
+              Nota (opcional)
+            </label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Ej: Encontrado con hongos en revisión matutina..."
+              className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-gray-400 transition text-gray-700 text-sm resize-none"
+              rows={2}
+            />
+          </div>
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">
