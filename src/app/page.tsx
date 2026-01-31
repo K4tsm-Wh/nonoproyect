@@ -17,12 +17,15 @@ import SearchBar from '@/components/SearchBar'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import EmptyState from '@/components/EmptyState'
 import SettingsForm from '@/components/SettingsForm'
+import QuickSaleModal from '@/components/QuickSaleModal'
+import EditProductModal from '@/components/EditProductModal'
+import GeneralLossModal from '@/components/GeneralLossModal'
 
 // --- TAB TYPES ---
 type TabType = 'inventory' | 'history' | 'losses' | 'settings'
 
-// --- PRODUCT ITEM (Memoized for performance) ---
-const RawProductItem = memo(({ 
+// --- PRODUCT ITEM (Reactividad completa sin memo para detectar cambios en batches) ---
+const RawProductItem = ({ 
   product, 
   batches,
   onOpenLossModal 
@@ -34,6 +37,12 @@ const RawProductItem = memo(({
   const [showBatches, setShowBatches] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  
+  // Estados para los nuevos modales
+  const [showQuickSale, setShowQuickSale] = useState(false)
+  const [showEditProduct, setShowEditProduct] = useState(false)
+  const [showGeneralLoss, setShowGeneralLoss] = useState(false)
+  
   const menuRef = useRef<HTMLDivElement>(null)
 
   const stockTotal = batches.reduce((sum, b) => sum + (b.stockActual || 0), 0)
@@ -63,6 +72,24 @@ const RawProductItem = memo(({
       toast.success(`"${product.nombre}" eliminado`)
     } catch (error) { 
       toast.error('Error al eliminar')
+    }
+  }
+
+  const handleMenuAction = (action: 'sale' | 'loss' | 'edit' | 'delete') => {
+    setShowMenu(false)
+    switch (action) {
+      case 'sale':
+        setShowQuickSale(true)
+        break
+      case 'loss':
+        setShowGeneralLoss(true)
+        break
+      case 'edit':
+        setShowEditProduct(true)
+        break
+      case 'delete':
+        setConfirmDelete(true)
+        break
     }
   }
 
@@ -96,6 +123,7 @@ const RawProductItem = memo(({
             </div>
           </div>
 
+          {/* Super Menú de 3 puntos */}
           <div className="relative border-l pl-3 ml-2 border-gray-100" ref={menuRef}>
             <button 
               onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu) }}
@@ -105,13 +133,53 @@ const RawProductItem = memo(({
             </button>
 
             {showMenu && (
-              <div className="absolute right-0 top-10 w-48 bg-white rounded-xl shadow-2xl border z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                <button 
-                  onClick={() => { setShowMenu(false); setConfirmDelete(true) }}
-                  className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 font-medium"
-                >
-                  🗑️ Borrar Producto
-                </button>
+              <div className="absolute right-0 top-10 w-56 bg-white rounded-xl shadow-2xl border z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                {/* Header informativo */}
+                <div className="px-4 py-3 bg-gray-50 border-b">
+                  <p className="text-xs text-gray-500 uppercase font-medium">Stock actual</p>
+                  <p className={`text-lg font-black ${isLowStock ? 'text-red-500' : 'text-green-600'}`}>
+                    {stockTotal.toFixed(2)} kg
+                  </p>
+                </div>
+                
+                {/* Opciones del menú */}
+                <div className="py-1">
+                  <button 
+                    onClick={() => handleMenuAction('sale')}
+                    disabled={stockTotal <= 0}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-green-50 flex items-center gap-3 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span className="text-lg">🛒</span>
+                    <span>Vender Rápido</span>
+                  </button>
+                  
+                  <button 
+                    onClick={() => handleMenuAction('loss')}
+                    disabled={stockTotal <= 0}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-orange-50 flex items-center gap-3 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span className="text-lg">📉</span>
+                    <span>Registrar Merma</span>
+                  </button>
+                  
+                  <button 
+                    onClick={() => handleMenuAction('edit')}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 flex items-center gap-3 font-medium"
+                  >
+                    <span className="text-lg">✏️</span>
+                    <span>Editar Detalles</span>
+                  </button>
+                  
+                  <div className="border-t my-1"></div>
+                  
+                  <button 
+                    onClick={() => handleMenuAction('delete')}
+                    className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 font-medium"
+                  >
+                    <span className="text-lg">🗑️</span>
+                    <span>Borrar Producto</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -140,6 +208,30 @@ const RawProductItem = memo(({
         )}
       </div>
 
+      {/* Modales */}
+      <QuickSaleModal
+        isOpen={showQuickSale}
+        product={product}
+        stockTotal={stockTotal}
+        onClose={() => setShowQuickSale(false)}
+        onSuccess={() => {}}
+      />
+
+      <EditProductModal
+        isOpen={showEditProduct}
+        product={product}
+        onClose={() => setShowEditProduct(false)}
+        onSuccess={() => {}}
+      />
+
+      <GeneralLossModal
+        isOpen={showGeneralLoss}
+        product={product}
+        stockTotal={stockTotal}
+        onClose={() => setShowGeneralLoss(false)}
+        onSuccess={() => {}}
+      />
+
       <ConfirmDialog
         isOpen={confirmDelete}
         title="¿Eliminar producto?"
@@ -150,9 +242,7 @@ const RawProductItem = memo(({
       />
     </>
   )
-})
-
-RawProductItem.displayName = 'RawProductItem'
+}
 
 const ProductItem = withObservables(['product'], ({ product }: { product: any }) => ({
   product,
