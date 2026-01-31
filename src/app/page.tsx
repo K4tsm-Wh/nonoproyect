@@ -4,10 +4,20 @@ import { database } from '@/model/database'
 import withObservables from '@nozbe/with-observables'
 import { registrarIngresoMercaderia } from '@/services/batchService'
 import { procesarVentaFIFO } from '@/services/salesService'
-import InventoryForm from '@/components/InventoryForm' 
+import InventoryForm from '@/components/InventoryForm'
+import LossModal from '@/components/LossModal'
+import SalesHistory from '@/components/SalesHistory'
 
 // --- 1. COMPONENTE DE PRODUCTO ---
-const RawProductItem = ({ product, batches }: { product: any, batches: any[] }) => {
+const RawProductItem = ({ 
+  product, 
+  batches,
+  onOpenLossModal 
+}: { 
+  product: any, 
+  batches: any[],
+  onOpenLossModal: (batch: any, productName: string) => void 
+}) => {
   const [showBatches, setShowBatches] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -39,16 +49,9 @@ const RawProductItem = ({ product, batches }: { product: any, batches: any[] }) 
     }
   }
 
-  // --- BORRAR SOLO UN LOTE (Por vencimiento/pérdida) ---
-  const handleDeleteBatch = async (batch: any) => {
-    const confirm = window.confirm(`¿Eliminar solo este lote de ${batch.stockActual}kg?\n\nÚsalo para registrar pérdidas o mermas.`)
-    if (confirm) {
-      try {
-        await database.write(async () => {
-          await batch.markAsDeleted()
-        })
-      } catch (error) { console.error(error) }
-    }
+  // --- BORRAR SOLO UN LOTE (Abre modal de mermas) ---
+  const handleDeleteBatch = (batch: any) => {
+    onOpenLossModal(batch, product.nombre)
   }
 
   return (
@@ -125,11 +128,11 @@ const RawProductItem = ({ product, batches }: { product: any, batches: any[] }) 
                 <div className="flex items-center gap-3">
                     <span className="font-bold text-blue-700 text-sm">{b.stockActual.toFixed(2)} kg</span>
                     
-                    {/* Botón Borrar Lote Individual */}
+                    {/* Botón Borrar Lote Individual - AHORA ABRE MODAL */}
                     <button 
                         onClick={() => handleDeleteBatch(b)}
                         className="text-red-300 hover:text-red-600 p-1 hover:bg-red-100 rounded transition-colors"
-                        title="Eliminar este lote (Merma)"
+                        title="Registrar Merma"
                     >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
@@ -144,12 +147,12 @@ const RawProductItem = ({ product, batches }: { product: any, batches: any[] }) 
   )
 }
 
-const ProductItem = withObservables(['product'], ({ product }) => ({
+const ProductItem = withObservables(['product'], ({ product }: { product: any }) => ({
   product,
   batches: product.batches.observe()
 }))(RawProductItem)
 
-const RawProductList = ({ products }: { products: any[] }) => (
+const RawProductList = ({ products, onOpenLossModal }: { products: any[], onOpenLossModal: (batch: any, productName: string) => void }) => (
   <div className="mt-8 border rounded-2xl overflow-hidden shadow-xl bg-white min-h-[200px]">
     <div className="bg-gray-800 p-4 text-white font-bold flex justify-between items-center">
       <span>Inventario FreshControl</span>
@@ -158,20 +161,36 @@ const RawProductList = ({ products }: { products: any[] }) => (
     {products.length === 0 ? (
       <div className="p-10 text-center text-gray-400 italic">No hay productos registrados.</div>
     ) : (
-      products.map(p => <ProductItem key={p.id} product={p} />)
+      products.map(p => <ProductItem key={p.id} product={p} onOpenLossModal={onOpenLossModal} />)
     )}
   </div>
 )
 
-const ProductList = withObservables([], () => ({
+const EnhancedProductList = withObservables([], () => ({
   products: database.get('products').query().observe()
 }))(RawProductList)
+
+// Wrapper to pass through non-observable props
+const ProductList = ({ onOpenLossModal }: { onOpenLossModal: (batch: any, productName: string) => void }) => (
+  <EnhancedProductList onOpenLossModal={onOpenLossModal} />
+)
 
 
 // --- 2. PÁGINA PRINCIPAL ---
 export default function Home() {
   const [loading, setLoading] = useState(false)
-  const [view, setView] = useState<'list' | 'add'>('list')
+  const [view, setView] = useState<'list' | 'add' | 'history'>('list')
+  
+  // Estado para el modal de mermas
+  const [lossModal, setLossModal] = useState<{
+    isOpen: boolean,
+    batch: any,
+    productName: string
+  }>({
+    isOpen: false,
+    batch: null,
+    productName: ''
+  })
 
   const handleIngresoLote = async () => {
     setLoading(true)
@@ -198,6 +217,22 @@ export default function Home() {
     finally { setLoading(false) }
   }
 
+  const openLossModal = (batch: any, productName: string) => {
+    setLossModal({
+      isOpen: true,
+      batch,
+      productName
+    })
+  }
+
+  const closeLossModal = () => {
+    setLossModal({
+      isOpen: false,
+      batch: null,
+      productName: ''
+    })
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 p-8 font-sans">
       <div className="max-w-md mx-auto">
@@ -206,16 +241,39 @@ export default function Home() {
             <h1 className="text-3xl font-black text-green-600 tracking-tighter">FreshControl</h1>
             <p className="text-gray-500 text-sm">Punto de Venta Offline-First</p>
           </div>
-          <button 
-            onClick={() => setView(view === 'list' ? 'add' : 'list')}
-            className="bg-gray-800 hover:bg-gray-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-md transition"
-          >
-            {view === 'list' ? '+ NUEVO INGRESO' : '← VOLVER A LISTA'}
-          </button>
+          <div className="flex gap-2">
+            {view === 'list' && (
+              <>
+                <button 
+                  onClick={() => setView('history')}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-bold px-3 py-2 rounded-full shadow-md transition"
+                  title="Ver Historial"
+                >
+                  📊
+                </button>
+                <button 
+                  onClick={() => setView('add')}
+                  className="bg-gray-800 hover:bg-gray-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-md transition"
+                >
+                  + NUEVO INGRESO
+                </button>
+              </>
+            )}
+            {view === 'add' && (
+              <button 
+                onClick={() => setView('list')}
+                className="bg-gray-800 hover:bg-gray-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-md transition"
+              >
+                ← VOLVER A LISTA
+              </button>
+            )}
+          </div>
         </header>
 
         {view === 'add' ? (
           <InventoryForm onComplete={() => setView('list')} />
+        ) : view === 'history' ? (
+          <SalesHistory onBack={() => setView('list')} />
         ) : (
           <>
             <div className="grid grid-cols-1 gap-3 mb-6">
@@ -236,10 +294,21 @@ export default function Home() {
               </button>
             </div>
 
-            <ProductList />
+            <ProductList onOpenLossModal={openLossModal} />
           </>
         )}
       </div>
+
+      {/* Modal de Mermas */}
+      <LossModal 
+        isOpen={lossModal.isOpen}
+        batch={lossModal.batch}
+        productName={lossModal.productName}
+        onClose={closeLossModal}
+        onSuccess={() => {
+          // El toast de éxito se puede agregar aquí
+        }}
+      />
     </div>
   )
 }

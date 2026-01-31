@@ -1,28 +1,62 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb'
 
 export default appSchema({
-  version: 1,
+  version: 2,
   tables: [
-    // Tabla de Productos para búsqueda O(1) [cite: 72, 74]
+    // Tabla de Productos para búsqueda O(1)
     tableSchema({
       name: 'products',
       columns: [
-        { name: 'sku', type: 'string', isIndexed: true }, // Indexado para rapidez [cite: 71]
+        { name: 'sku', type: 'string', isIndexed: true },
         { name: 'nombre', type: 'string' },
-        { name: 'unidad_medida', type: 'string' }, // kg o unidad [cite: 46]
+        { name: 'unidad_medida', type: 'string' },
         { name: 'precio_venta', type: 'number' },
-        { name: 'updated_at', type: 'number' }, // Para la sincronización [cite: 31]
+        { name: 'updated_at', type: 'number' },
       ]
     }),
-    // Tabla de Lotes para el control de vencimientos [cite: 50, 63]
+    // Tabla de Lotes para el control de vencimientos
     tableSchema({
       name: 'batches',
       columns: [
         { name: 'product_id', type: 'string', isIndexed: true },
         { name: 'fecha_ingreso', type: 'string' },
-        { name: 'fecha_vencimiento', type: 'string', isIndexed: true }, // Para alertas rápidas [cite: 66]
+        { name: 'fecha_vencimiento', type: 'string', isIndexed: true },
         { name: 'costo_compra', type: 'number' },
-        { name: 'stock_actual', type: 'number' }, // Decimales para kilos [cite: 58, 83]
+        { name: 'stock_actual', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ]
+    }),
+    // Tabla de Pérdidas/Mermas
+    tableSchema({
+      name: 'losses',
+      columns: [
+        { name: 'batch_id', type: 'string', isIndexed: true },
+        { name: 'product_id', type: 'string', isIndexed: true },
+        { name: 'reason', type: 'string' },
+        { name: 'quantity', type: 'number' },
+        { name: 'date', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ]
+    }),
+    // Cabecera de Ventas
+    tableSchema({
+      name: 'sales',
+      columns: [
+        { name: 'total_amount', type: 'number' },
+        { name: 'date', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ]
+    }),
+    // Detalle de Ventas (Items por Lote)
+    tableSchema({
+      name: 'sale_items',
+      columns: [
+        { name: 'sale_id', type: 'string', isIndexed: true },
+        { name: 'product_id', type: 'string', isIndexed: true },
+        { name: 'batch_id', type: 'string' },
+        { name: 'quantity', type: 'number' },
+        { name: 'unit_price', type: 'number' },
+        { name: 'subtotal', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ]
     }),
